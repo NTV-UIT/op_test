@@ -104,31 +104,12 @@ product_retrieval_system/
 ### Food Ingredients Data
 - **`ingredients v1.csv`**: Comprehensive ingredient database sourced from **Food Ingredient Lists**
   - Standardized ingredient names and classifications
-  - Nutritional and allergen information
-  - Used for ingredient-based search and filtering
-
-### Evaluation Data
-- **`gt.csv`**: Ground truth queries with relevant document IDs for system evaluation
-  - 22 test queries covering various search scenarios
-  - Brand-specific searches (Kikkoman, Goya, Spice Islands, etc.)
   - Ingredient-based queries (garlic powder, cinnamon, etc.)
   - Category searches (fresh food, coffee products, etc.)
-
-## 🚀 Installation & Setup
-
 ### Prerequisites
 - Python 3.8 or higher
-- pip package manager
-- 4GB+ RAM (for loading ML models)
 
-### Installation Steps
-
-1. **Clone the repository**
-   ```bash
    git clone <your-repository-url>
-   cd product_retrieval_system
-   ```
-
 2. **Install dependencies**
    ```bash
    pip install -r product_retrieval_app/requirements.txt
@@ -181,6 +162,84 @@ Content-Type: application/json
   "query": "organic juice with vitamin C",
   "method": "hybrid",
   "top_k": 10
+Semantic product search using AI embeddings and vector similarity. Search by natural language, ingredients, brands, and product features.
+
+Accurate product search using NLP and ML. Combines keyword and semantic matching for better results.
+
+**Semantic Search** (AI-powered), **Vector Similarity** (FAISS, 1024-dim), **Hybrid Model** (Bi-Encoder + Cross-Encoder), **Analytics Dashboard**, **Web UI** (Bootstrap 5), **REST API**, **Product Management** (CRUD, live index).
+
+Backend: Flask, FAISS, Pandas, NumPy, Flask-CORS. ML: Bi-Encoder (BAAI/bge-large-en-v1.5), Cross-Encoder (BAAI/bge-reranker-base). Frontend: Bootstrap 5, Chart.js, Font Awesome. Data: CSV, .npy, FAISS index.
+
+product_retrieval_system/
+├── README.md
+├── requirements.txt
+├── run.py
+├── gt.csv
+├── ingredients v1.csv
+├── product_metadata.csv
+├── embeddings.npy
+├── faiss_index.index
+├── evaluation_results.json
+├── dataprocess.ipynb
+├── product_retrieval_system.ipynb
+├── product_retrieval_app/
+│   ├── backend/
+│   ├── frontend/
+│   ├── config/
+│   ├── data/
+│   ├── logs/
+│   └── tests/
+
+1. Clone repo & install dependencies:
+   ```bash
+   git clone <your-repository-url>
+   cd product_retrieval_system
+   pip install -r product_retrieval_app/requirements.txt
+   ```
+2. Verify data files:
+   ```bash
+   ls product_retrieval_app/data/
+   # Should show: embeddings.npy, faiss_index.index, product_metadata.csv
+   ```
+3. Run app:
+   ```bash
+   cd product_retrieval_app
+   python run.py
+   ```
+4. Access: http://localhost:5001
+
+Environment variables:
+```bash
+DEBUG=True
+HOST=0.0.0.0
+PORT=5001
+EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
+CROSS_ENCODER_MODEL=BAAI/bge-reranker-base
+```
+
+API endpoints:
+- `/api/search` (POST): Search products
+- `/api/products` (CRUD): Manage products
+- `/api/stats` (GET): System stats
+
+### PERFORMANCE COMPARISON
+```
+Metric      Bi-Encoder   Hybrid     Improvement
+----------------------------------------------
+Hit@3 (%)   90.9        100.0      +9.1
+MRR (%)     79.1        94.7       +15.6
+P@3 (%)     65.2        83.3       +18.2
+Time (ms)   17.2        138.4      +121.2
+```
+
+🏆 BEST METHOD: Hybrid (Score: 93.4)
+
+---
+**Quick Start:** Clone, install, run, and access at http://localhost:5001
+
+**Best for:** Fast, accurate product search using hybrid semantic methods.
+
+**Contact:** Issues, docs, or test suite for support.
 }
 ```
 
