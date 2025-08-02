@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Product Retrieval System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</h1>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h4 class="mb-0">{{ stats.total_products }}</h4>
+                        <p class="mb-0">Total Products</p>
+                    </div>
+                    <i class="fas fa-box fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h4 class="mb-0">{{ stats.total_vectors }}</h4>
+                        <p class="mb-0">Vector Embeddings</p>
+                    </div>
+                    <i class="fas fa-vector-square fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h4 class="mb-0">{{ stats.top_brands|length }}</h4>
+                        <p class="mb-0">Active Brands</p>
+                    </div>
+                    <i class="fas fa-tags fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">{{ stats.last_updated }}</h6>
+                        <p class="mb-0">Last Updated</p>
+                    </div>
+                    <i class="fas fa-clock fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <a href="/search" class="btn btn-primary btn-lg w-100 mb-2">
+                            <i class="fas fa-search me-2"></i>Search Products
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-success btn-lg w-100 mb-2" onclick="showAddProductModal()">
+                            <i class="fas fa-plus me-2"></i>Add Product
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="/admin" class="btn btn-info btn-lg w-100 mb-2">
+                            <i class="fas fa-cog me-2"></i>Manage Database
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Brands -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Top Brands</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="brandsChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>System Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        FAISS Index
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        Search Engine
+                        <span class="badge bg-success">Ready</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        Embeddings Model
+                        <span class="badge bg-success">Loaded</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        Database
+                        <span class="badge bg-success">Connected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Create brands chart
+const ctx = document.getElementById('brandsChart').getContext('2d');
+const brandsData = {{ stats.top_brands | tojsonfilter }};
+const labels = Object.keys(brandsData);
+const data = Object.values(brandsData);
+
+new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: labels,
+        datasets: [{
+            data: data,
+            backgroundColor: [
+                '#FF6384',
+                '#36A2EB', 
+                '#FFCE56',
+                '#4BC0C0',
+                '#9966FF'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false
+    }
+});
+</script>
+{% endblock %}
