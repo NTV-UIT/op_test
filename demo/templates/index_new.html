@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Search System</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">
+                    <i class="fas fa-search"></i>
+                    Product Search
+                </h1>
+                <div class="header-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Products:</span>
+                        <span id="total-products" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Status:</span>
+                        <span id="api-status" class="stat-value">-</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Search Section -->
+        <section class="search-section">
+            <div class="search-container">
+                <div class="search-box">
+                    <input 
+                        type="text" 
+                        id="search-input" 
+                        placeholder="Search for products, brands, ingredients..."
+                        autocomplete="off"
+                    >
+                    <button id="search-btn" class="search-btn">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+                
+                <div class="search-options">
+                    <div class="option-group">
+                        <label for="search-method">Method:</label>
+                        <select id="search-method">
+                            <option value="hybrid">Hybrid Search</option>
+                            <option value="bi_encoder">Bi-Encoder</option>
+                        </select>
+                    </div>
+                    
+                    <div class="option-group">
+                        <label for="result-count">Results:</label>
+                        <select id="result-count">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section">
+            <!-- Loading Spinner -->
+            <div id="loading" class="loading hidden">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span>Searching...</span>
+            </div>
+
+            <!-- Search Results -->
+            <div id="search-results" class="search-results hidden">
+                <div class="results-header">
+                    <h2>Search Results</h2>
+                    <div class="results-info">
+                        <span id="results-count"></span>
+                        <span id="search-time"></span>
+                    </div>
+                </div>
+                <div id="results-container" class="results-container">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+
+            <!-- Browse Products -->
+            <div id="browse-section" class="browse-section">
+                <div class="browse-header">
+                    <h2>Browse Products</h2>
+                    <div class="browse-controls">
+                        <input 
+                            type="text" 
+                            id="filter-input" 
+                            placeholder="Filter products..."
+                            class="filter-input"
+                        >
+                        <button id="load-products" class="btn btn-secondary">
+                            <i class="fas fa-list"></i>
+                            Load Products
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="products-container" class="products-container">
+                    <!-- Products will be populated here -->
+                </div>
+                
+                <!-- Pagination -->
+                <div id="pagination" class="pagination hidden">
+                    <button id="prev-page" class="btn btn-outline">
+                        <i class="fas fa-chevron-left"></i>
+                        Previous
+                    </button>
+                    <span id="page-info" class="page-info"></span>
+                    <button id="next-page" class="btn btn-outline">
+                        Next
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Product Detail Modal -->
+        <div id="product-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modal-title">Product Details</h3>
+                    <button id="close-modal" class="close-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div id="modal-body" class="modal-body">
+                    <!-- Product details will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container" class="toast-container">
+            <!-- Toast messages will appear here -->
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
