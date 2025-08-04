@@ -12,11 +12,16 @@ import faiss
 from typing import Dict, List, Optional, Tuple, Any
 import json
 from datetime import datetime
+from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config'))
 
-from config.simple_config import config
+from simple_config import (
+    EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device
+)
 from src.embedding import embed_text_with_attention, load_embedding_model
 from src.preprocess import create_text_corpus_for_product
 
@@ -26,10 +31,10 @@ class ProductUpdater:
     
     def __init__(self):
         """Khởi tạo ProductUpdater"""
-        self.config = config
+        self.device = get_device()
         self.model = None
         self.tokenizer = None
-        self.data_df = None
+        self.metadata_df = None
         self.embeddings = None
         self.index = None
         self.load_existing_data()
@@ -37,41 +42,57 @@ class ProductUpdater:
     def load_existing_data(self):
         """Load dữ liệu hiện có"""
         try:
-            # Load CSV data
-            if os.path.exists(self.config['data']['output_csv_path']):
-                self.data_df = pd.read_csv(self.config['data']['output_csv_path'])
-                print(f"✅ Loaded {len(self.data_df)} products from CSV")
+            # Load model
+            self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+            self.tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
+            print("✅ Loaded embedding model")
+            
+            self._load_data()
+                
+        except Exception as e:
+            print(f"❌ Error loading data: {e}")
+            self.metadata_df = None
+            self.embeddings = None
+            self.index = None
+    
+    def _load_data(self):
+        """Load/reload dữ liệu database"""
+        try:
+            # Load CSV metadata
+            if os.path.exists(DATA_PATHS['metadata']):
+                self.metadata_df = pd.read_csv(DATA_PATHS['metadata'])
+                print(f"✅ Loaded {len(self.metadata_df)} products from metadata")
             else:
-                raise FileNotFoundError("CSV file not found")
+                raise FileNotFoundError("Metadata file not found")
                 
             # Load embeddings
-            if os.path.exists(self.config['embedding']['output_path']):
-                self.embeddings = np.load(self.config['embedding']['output_path'])
+            if os.path.exists(DATA_PATHS['embeddings']):
+                self.embeddings = np.load(DATA_PATHS['embeddings'])
                 print(f"✅ Loaded embeddings: {self.embeddings.shape}")
             else:
                 raise FileNotFoundError("Embeddings file not found")
                 
             # Load FAISS index
-            if os.path.exists(self.config['embedding']['index_path']):
-                self.index = faiss.read_index(self.config['embedding']['index_path'])
+            if os.path.exists(DATA_PATHS['faiss_index']):
+                self.index = faiss.read_index(DATA_PATHS['faiss_index'])
                 print(f"✅ Loaded FAISS index: {self.index.ntotal} vectors")
             else:
                 raise FileNotFoundError("FAISS index not found")
                 
         except Exception as e:
             print(f"❌ Error loading data: {e}")
-            sys.exit(1)
+            raise e
     
     def display_products(self, limit: int = 20) -> None:
         """Hiển thị danh sách sản phẩm"""
-        print(f"\n📋 Danh sách sản phẩm (hiển thị {min(limit, len(self.data_df))} sản phẩm):")
+        print(f"\n📋 Danh sách sản phẩm (hiển thị {min(limit, len(self.metadata_df))} sản phẩm):")
         print("-" * 100)
         
-        for idx, row in self.data_df.head(limit).iterrows():
+        for idx, row in self.metadata_df.head(limit).iterrows():
             print(f"ID: {idx:3d} | {row['name'][:50]:<50} | {row['brand'][:20]:<20}")
         
-        if len(self.data_df) > limit:
-            print(f"... và {len(self.data_df) - limit} sản phẩm khác")
+        if len(self.metadata_df) > limit:
+            print(f"... và {len(self.metadata_df) - limit} sản phẩm khác")
     
     def search_products(self, query: str) -> List[int]:
         """Tìm kiếm sản phẩm theo keyword"""
@@ -82,7 +103,7 @@ class ProductUpdater:
         results = []
         query_lower = query.lower()
         
-        for idx, row in self.data_df.iterrows():
+        for idx, row in self.metadata_df.iterrows():
             search_text = f"{row['name']} {row['brand']} {row.get('ingredients', '')}".lower()
             if query_lower in search_text:
                 results.append(idx)
@@ -114,13 +135,13 @@ class ProductUpdater:
     def _select_by_id(self) -> Optional[int]:
         """Chọn sản phẩm theo ID"""
         try:
-            product_id = int(input(f"Nhập ID sản phẩm (0-{len(self.data_df)-1}): "))
-            if 0 <= product_id < len(self.data_df):
+            product_id = int(input(f"Nhập ID sản phẩm (0-{len(self.metadata_df)-1}): "))
+            if 0 <= product_id < len(self.metadata_df):
                 self._display_product_details(product_id)
                 if input("Xác nhận cập nhật sản phẩm này? (y/n): ").lower() == 'y':
                     return product_id
             else:
-                print(f"❌ ID không hợp lệ! Phải từ 0 đến {len(self.data_df)-1}")
+                print(f"❌ ID không hợp lệ! Phải từ 0 đến {len(self.metadata_df)-1}")
         except ValueError:
             print("❌ ID phải là số nguyên!")
         return None
@@ -140,7 +161,7 @@ class ProductUpdater:
         print("-" * 80)
         
         for i, idx in enumerate(results[:10], 1):
-            row = self.data_df.iloc[idx]
+            row = self.metadata_df.iloc[idx]
             print(f"{i:2d}. ID:{idx:3d} | {row['name'][:40]:<40} | {row['brand'][:15]}")
             
         try:
@@ -157,18 +178,18 @@ class ProductUpdater:
     def _select_from_list(self) -> Optional[int]:
         """Chọn sản phẩm từ danh sách"""
         page_size = 20
-        total_pages = (len(self.data_df) - 1) // page_size + 1
+        total_pages = (len(self.metadata_df) - 1) // page_size + 1
         current_page = 0
         
         while True:
             start_idx = current_page * page_size
-            end_idx = min(start_idx + page_size, len(self.data_df))
+            end_idx = min(start_idx + page_size, len(self.metadata_df))
             
             print(f"\n📋 Danh sách sản phẩm (Trang {current_page + 1}/{total_pages}):")
             print("-" * 80)
             
             for i in range(start_idx, end_idx):
-                row = self.data_df.iloc[i]
+                row = self.metadata_df.iloc[i]
                 print(f"{i:3d}. {row['name'][:40]:<40} | {row['brand'][:15]}")
             
             print(f"\n[n]ext | [p]rev | [s]elect | [q]uit")
@@ -194,7 +215,7 @@ class ProductUpdater:
     
     def _display_product_details(self, product_id: int) -> None:
         """Hiển thị chi tiết sản phẩm"""
-        row = self.data_df.iloc[product_id]
+        row = self.metadata_df.iloc[product_id]
         print(f"\n📦 Chi tiết sản phẩm ID: {product_id}")
         print("-" * 60)
         print(f"Tên: {row['name']}")
@@ -249,38 +270,85 @@ class ProductUpdater:
             text_corpus,
             self.model,
             self.tokenizer,
-            max_length=self.config['embedding']['max_length']
+            max_length=MAX_LENGTH,
+            device=self.device
         )
         
-        return embedding.reshape(1, -1)
+        # Convert to CPU and numpy before reshape
+        embedding_numpy = embedding.detach().cpu().numpy()
+        return embedding_numpy.reshape(1, -1)
     
     def update_product(self, product_id: int, updated_info: Dict[str, Any]) -> bool:
         """Cập nhật sản phẩm trong database"""
         try:
             print(f"\n🔄 Đang cập nhật sản phẩm ID: {product_id}...")
             
+            # 0. Tìm index của product_id trong DataFrame
+            if product_id not in self.metadata_df['id'].values:
+                print(f"❌ Product ID {product_id} không tồn tại!")
+                return False
+            
+            # Lấy index thực tế của product_id
+            product_index = self.metadata_df[self.metadata_df['id'] == product_id].index[0]
+            
+            # Debug: Kiểm tra consistency
+            print(f"🔍 Debug info:")
+            print(f"   Product ID: {product_id}")
+            print(f"   Product index in DataFrame: {product_index}")
+            print(f"   Metadata shape: {self.metadata_df.shape}")
+            print(f"   Embeddings shape: {self.embeddings.shape}")
+            print(f"   FAISS index size: {self.index.ntotal}")
+            
+            # Validation: Đảm bảo index không vượt quá bounds
+            if product_index >= len(self.embeddings):
+                print(f"❌ Error: product_index {product_index} >= embeddings size {len(self.embeddings)}")
+                print("🔄 Rebuilding embeddings to match metadata...")
+                self._rebuild_all_embeddings()
+                # Sau khi rebuild, kiểm tra lại
+                if product_index >= len(self.embeddings):
+                    print(f"❌ Still out of bounds after rebuild!")
+                    return False
+            
             # 1. Tạo embedding mới
             print("📊 Tạo embedding mới...")
             new_embedding = self._create_embedding(updated_info)
             
-            # 2. Cập nhật metadata trong DataFrame
+            # 2. Cập nhật metadata trong DataFrame (sử dụng index, không phải ID)
             print("📝 Cập nhật metadata...")
             for field, value in updated_info.items():
-                self.data_df.at[product_id, field] = value
+                self.metadata_df.at[product_index, field] = value
             
-            # 3. Cập nhật embedding trong array
+            # Cập nhật text_corpus với thông tin mới
+            new_text_corpus = create_text_corpus_for_product(
+                name=updated_info['name'],
+                brand=updated_info['brand'], 
+                ingredients=updated_info.get('ingredients', ''),
+                categories=updated_info.get('categories', ''),
+                manufacturer=updated_info.get('manufacturer', ''),
+                manufacturerNumber=updated_info.get('manufacturerNumber', '')
+            )
+            self.metadata_df.at[product_index, 'text_corpus'] = new_text_corpus
+            
+            # 3. Cập nhật embedding trong array (sử dụng index)
             print("🔢 Cập nhật embedding...")
-            self.embeddings[product_id] = new_embedding.flatten()
+            self.embeddings[product_index] = new_embedding.flatten()
             
-            # 4. Cập nhật FAISS index
+            # 4. Cập nhật FAISS index (QUICK UPDATE)
             print("📚 Cập nhật FAISS index...")
-            if hasattr(self.index, 'remove_ids'):
-                # Nếu là IndexIDMap, remove và add lại
-                self.index.remove_ids(np.array([product_id], dtype=np.int64))
-                self.index.add_with_ids(new_embedding, np.array([product_id], dtype=np.int64))
-            else:
-                # Nếu không phải IndexIDMap, rebuild toàn bộ index
-                print("⚠️ Rebuilding entire index...")
+            
+            # Normalize embedding cho cosine similarity
+            normalized_embedding = new_embedding.copy()
+            faiss.normalize_L2(normalized_embedding)
+            
+            # Quick update: Chỉ remove và add lại vector này
+            try:
+                self.index.remove_ids(np.array([product_index], dtype=np.int64))
+                self.index.add_with_ids(normalized_embedding, np.array([product_index], dtype=np.int64))
+                print(f"⚡ Quick update vector at index {product_index}")
+                
+            except Exception as idx_error:
+                print(f"⚠️ Quick update failed: {idx_error}")
+                print("🔄 Rebuilding index...")
                 self._rebuild_faiss_index()
             
             # 5. Lưu dữ liệu
@@ -312,16 +380,64 @@ class ProductUpdater:
         
         print(f"✅ Rebuilt FAISS index với {self.index.ntotal} vectors")
     
+    def _rebuild_all_embeddings(self):
+        """Rebuild toàn bộ embeddings từ metadata"""
+        try:
+            print("🔄 Rebuilding all embeddings from metadata...")
+            
+            embeddings_list = []
+            
+            for idx, row in self.metadata_df.iterrows():
+                # Tạo embedding từ text_corpus hoặc từ các field
+                if 'text_corpus' in row and pd.notna(row['text_corpus']):
+                    text = row['text_corpus']
+                else:
+                    # Tạo text_corpus từ các field
+                    text = create_text_corpus_for_product(
+                        name=row.get('name', ''),
+                        brand=row.get('brand', ''),
+                        ingredients=row.get('ingredients', ''),
+                        categories=row.get('categories', ''),
+                        manufacturer=row.get('manufacturer', ''),
+                        manufacturerNumber=row.get('manufacturerNumber', '')
+                    )
+                
+                # Tạo embedding
+                embedding = embed_text_with_attention(
+                    text,
+                    self.model,
+                    self.tokenizer,
+                    max_length=MAX_LENGTH,
+                    device=self.device
+                )
+                
+                embeddings_list.append(embedding.detach().cpu().numpy())
+                
+                if (idx + 1) % 50 == 0:
+                    print(f"   Processed {idx + 1}/{len(self.metadata_df)} products...")
+            
+            # Convert to numpy array
+            self.embeddings = np.array(embeddings_list)
+            
+            # Rebuild FAISS index
+            self._rebuild_faiss_index()
+            
+            print(f"✅ Rebuilt all embeddings: {self.embeddings.shape}")
+            
+        except Exception as e:
+            print(f"❌ Lỗi khi rebuild embeddings: {e}")
+            raise e
+    
     def _save_data(self):
         """Lưu dữ liệu ra file"""
-        # Lưu CSV
-        self.data_df.to_csv(self.config['data']['output_csv_path'], index=False)
+        # Lưu CSV metadata
+        self.metadata_df.to_csv(DATA_PATHS['metadata'], index=False)
         
         # Lưu embeddings
-        np.save(self.config['embedding']['output_path'], self.embeddings)
+        np.save(DATA_PATHS['embeddings'], self.embeddings)
         
         # Lưu FAISS index
-        faiss.write_index(self.index, self.config['embedding']['index_path'])
+        faiss.write_index(self.index, DATA_PATHS['faiss_index'])
         
         print("💾 Đã lưu tất cả dữ liệu")
     
@@ -337,7 +453,7 @@ class ProductUpdater:
                 break
                 
             # Lấy thông tin hiện tại
-            current_product = self.data_df.iloc[product_id]
+            current_product = self.metadata_df.iloc[product_id]
             
             # Thu thập thông tin mới
             updated_info = self.get_updated_product_info(current_product)

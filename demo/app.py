@@ -23,14 +23,20 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'config'))
 
 # Import our modules
 from src.search import ProductSearcher
+from src.add_row import ProductManager
+from src.delete_row import ProductDeleter
+from src.update_row import ProductUpdater
 from simple_config import API_SETTINGS
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)  # Enable CORS for frontend integration
 
-# Global variables for search service
+# Global variables for search service and database managers
 searcher = None
+product_manager = None
+product_deleter = None
+product_updater = None
 
 
 def find_available_port(start_port=5000, max_attempts=10):
@@ -46,8 +52,8 @@ def find_available_port(start_port=5000, max_attempts=10):
 
 
 def initialize_search_service():
-    """Khởi tạo search service"""
-    global searcher
+    """Khởi tạo search service và database managers"""
+    global searcher, product_manager, product_deleter, product_updater
     
     try:
         print("🚀 Initializing search service...")
@@ -56,13 +62,63 @@ def initialize_search_service():
         searcher = ProductSearcher()
         print("✅ ProductSearcher initialized")
         
-        print("🎉 Search service initialized successfully!")
+        # Initialize database managers
+        product_manager = ProductManager()
+        print("✅ ProductManager initialized")
+        
+        product_deleter = ProductDeleter()
+        print("✅ ProductDeleter initialized")
+        
+        product_updater = ProductUpdater()
+        print("✅ ProductUpdater initialized")
+        
+        print("🎉 Search service and database managers initialized successfully!")
         return True
         
     except Exception as e:
         print(f"❌ Error initializing search service: {e}")
         traceback.print_exc()
         return False
+
+
+def reload_all_managers():
+    """Reload tất cả managers sau khi database thay đổi"""
+    global searcher, product_manager, product_deleter, product_updater
+    
+    try:
+        print("🔄 Reloading all managers...")
+        
+        # Reload searcher
+        if searcher:
+            searcher._load_data()
+            print("✅ Searcher reloaded")
+        
+        # Reload database managers
+        if product_manager:
+            product_manager._load_data()
+            print("✅ ProductManager reloaded")
+            
+        if product_deleter:
+            product_deleter.reload_data()
+            print("✅ ProductDeleter reloaded")
+            
+        if product_updater:
+            product_updater._load_data()
+            print("✅ ProductUpdater reloaded")
+        
+        print("🎉 All managers reloaded successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error reloading managers: {e}")
+        return False
+
+
+def safe_str(value):
+    """Helper function to safely convert values to string, handling NaN"""
+    if pd.isna(value):
+        return ''
+    return str(value)
 
 
 def convert_numpy_types(obj):
@@ -91,12 +147,12 @@ def format_search_results(results: List[Dict], scores: List[float] = None) -> Li
         
         formatted_result = {
             'id': int(result_id),
-            'name': str(result.get('name', '')),
-            'brand': str(result.get('brand', '')),
-            'ingredients': str(result.get('ingredients', '')),
-            'categories': str(result.get('categories', '')),
-            'manufacturer': str(result.get('manufacturer', '')),
-            'manufacturerNumber': str(result.get('manufacturerNumber', '')),
+            'name': safe_str(result.get('name', '')),
+            'brand': safe_str(result.get('brand', '')),
+            'ingredients': safe_str(result.get('ingredients', '')),
+            'categories': safe_str(result.get('categories', '')),
+            'manufacturer': safe_str(result.get('manufacturer', '')),
+            'manufacturerNumber': safe_str(result.get('manufacturerNumber', '')),
             'score': float(score)
         }
         formatted_results.append(formatted_result)
@@ -107,7 +163,13 @@ def format_search_results(results: List[Dict], scores: List[float] = None) -> Li
 @app.route('/')
 def index():
     """Serve the main frontend page"""
-    return render_template('index.html')
+    return render_template('index_new.html')
+
+
+@app.route('/test')
+def test_api():
+    """Serve API test page"""
+    return render_template('test_api.html')
 
 
 @app.route('/static/<path:filename>')
@@ -224,13 +286,13 @@ def list_products():
         products = []
         for idx, row in page_df.iterrows():
             products.append({
-                'id': int(convert_numpy_types(idx)),
-                'name': str(row.get('name', '')),
-                'brand': str(row.get('brand', '')),
-                'ingredients': str(row.get('ingredients', '')),
-                'categories': str(row.get('categories', '')),
-                'manufacturer': str(row.get('manufacturer', '')),
-                'manufacturerNumber': str(row.get('manufacturerNumber', ''))
+                'id': int(convert_numpy_types(row.get('id', idx))),
+                'name': safe_str(row.get('name', '')),
+                'brand': safe_str(row.get('brand', '')),
+                'ingredients': safe_str(row.get('ingredients', '')),
+                'categories': safe_str(row.get('categories', '')),
+                'manufacturer': safe_str(row.get('manufacturer', '')),
+                'manufacturerNumber': safe_str(row.get('manufacturerNumber', ''))
             })
         
         return jsonify({
@@ -254,6 +316,35 @@ def list_products():
         return jsonify({'error': f'List products failed: {str(e)}'}), 500
 
 
+@app.route('/api/stats', methods=['GET'])
+def get_database_stats():
+    """Lấy thống kê database để debug"""
+    try:
+        if not searcher:
+            return jsonify({'error': 'Search service not initialized'}), 500
+            
+        df = searcher.metadata_df
+        stats = {
+            'total_products': len(df),
+            'id_range': {
+                'min': int(df['id'].min()) if len(df) > 0 else None,
+                'max': int(df['id'].max()) if len(df) > 0 else None
+            },
+            'sample_ids': df['id'].head(10).tolist() if len(df) > 0 else [],
+            'faiss_vectors': searcher.index.ntotal if searcher.index else 0,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+        
+    except Exception as e:
+        print(f"Stats error: {e}")
+        return jsonify({'error': f'Stats failed: {str(e)}'}), 500
+
+
 @app.route('/api/products/<int:product_id>', methods=['GET'])
 def get_product(product_id: int):
     """Lấy thông tin sản phẩm theo ID"""
@@ -261,12 +352,12 @@ def get_product(product_id: int):
         if not searcher:
             return jsonify({'error': 'Search service not initialized'}), 500
         
-        # Check if product exists
-        if product_id < 0 or product_id >= len(searcher.metadata_df):
+        # Check if product exists by ID value, not by index
+        if product_id not in searcher.metadata_df['id'].values:
             return jsonify({'error': 'Product not found'}), 404
         
-        # Get product data
-        product = searcher.metadata_df.iloc[product_id]
+        # Get product data using ID
+        product = searcher.metadata_df[searcher.metadata_df['id'] == product_id].iloc[0]
         
         print(f"Debug - Product {product_id}:")
         print(f"  Name: {product.get('name', 'MISSING')}")
@@ -274,16 +365,23 @@ def get_product(product_id: int):
         print(f"  Categories: {product.get('categories', 'MISSING')}")
         print(f"  Manufacturer: {product.get('manufacturer', 'MISSING')}")
         print(f"  ManufacturerNumber: {product.get('manufacturerNumber', 'MISSING')}")
-        print(f"  Ingredients: {product.get('ingredients', 'MISSING')[:50]}...")
+        
+        # Handle NaN values for ingredients
+        ingredients = product.get('ingredients', 'MISSING')
+        if pd.isna(ingredients) or not isinstance(ingredients, str):
+            ingredients_preview = "MISSING"
+        else:
+            ingredients_preview = ingredients[:50] + "..." if len(ingredients) > 50 else ingredients
+        print(f"  Ingredients: {ingredients_preview}")
         
         product_data = {
-            'id': product_id,
-            'name': product.get('name', ''),
-            'brand': product.get('brand', ''),
-            'ingredients': product.get('ingredients', ''),
-            'categories': product.get('categories', ''),
-            'manufacturer': product.get('manufacturer', ''),
-            'manufacturerNumber': product.get('manufacturerNumber', '')
+            'id': int(product['id']),  # Use actual ID from metadata
+            'name': safe_str(product.get('name', '')),
+            'brand': safe_str(product.get('brand', '')),
+            'ingredients': safe_str(product.get('ingredients', '')),
+            'categories': safe_str(product.get('categories', '')),
+            'manufacturer': safe_str(product.get('manufacturer', '')),
+            'manufacturerNumber': safe_str(product.get('manufacturerNumber', ''))
         }
         
         return jsonify({
@@ -346,6 +444,190 @@ def get_statistics():
         return jsonify({'error': f'Get statistics failed: {str(e)}'}), 500
 
 
+@app.route('/api/products', methods=['POST'])
+def add_product():
+    """
+    Thêm sản phẩm mới
+    
+    Request body:
+    {
+        "name": "Product Name",
+        "brand": "Brand Name",
+        "ingredients": "Ingredient list",
+        "categories": "Category list",
+        "manufacturer": "Manufacturer",
+        "manufacturerNumber": "MFG123"
+    }
+    """
+    try:
+        if not product_manager:
+            return jsonify({'error': 'Product manager not initialized'}), 500
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Validate required fields
+        required_fields = ['name', 'brand']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+        
+        # Create product data
+        product_data = {
+            'name': str(data.get('name', '')),
+            'brand': str(data.get('brand', '')),
+            'ingredients': str(data.get('ingredients', '')),
+            'categories': str(data.get('categories', '')),
+            'manufacturer': str(data.get('manufacturer', '')),
+            'manufacturerNumber': str(data.get('manufacturerNumber', ''))
+        }
+        
+        # Add product using ProductManager
+        success = product_manager.add_product_from_data(product_data)
+        
+        if success:
+            # Reload all managers to reflect changes
+            reload_all_managers()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Product added successfully',
+                'product': product_data,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({'error': 'Failed to add product'}), 500
+        
+    except Exception as e:
+        print(f"Add product error: {e}")
+        traceback.print_exc()
+        return jsonify({'error': f'Add product failed: {str(e)}'}), 500
+
+
+@app.route('/api/products/<int:product_id>', methods=['DELETE'])
+def delete_product(product_id):
+    """
+    Xóa sản phẩm theo ID
+    """
+    try:
+        if not product_deleter:
+            return jsonify({'error': 'Product deleter not initialized'}), 500
+        
+        # Reload data to ensure consistency
+        product_deleter.reload_data()
+        
+        # Check if product exists
+        df = product_deleter.metadata_df
+        if product_id not in df['id'].values:
+            return jsonify({'error': f'Product with ID {product_id} not found'}), 404
+        
+        # Get product info before deletion
+        product_info = df[df['id'] == product_id].iloc[0].to_dict()
+        
+        # Delete product
+        success = product_deleter.delete_products([product_id])
+        
+        if success:
+            # Reload all managers to reflect changes
+            reload_all_managers()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Product {product_id} deleted successfully',
+                'deleted_product': {
+                    'id': int(product_id),
+                    'name': safe_str(product_info.get('name', '')),
+                    'brand': safe_str(product_info.get('brand', ''))
+                },
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({'error': 'Failed to delete product'}), 500
+        
+    except Exception as e:
+        print(f"Delete product error: {e}")
+        traceback.print_exc()
+        return jsonify({'error': f'Delete product failed: {str(e)}'}), 500
+
+
+@app.route('/api/products/<int:product_id>', methods=['PUT'])
+def update_product(product_id):
+    """
+    Cập nhật sản phẩm theo ID
+    
+    Request body:
+    {
+        "name": "Updated Product Name",
+        "brand": "Updated Brand Name",
+        "ingredients": "Updated ingredients",
+        "categories": "Updated categories",
+        "manufacturer": "Updated Manufacturer",
+        "manufacturerNumber": "Updated MFG123"
+    }
+    """
+    try:
+        if not product_updater:
+            return jsonify({'error': 'Product updater not initialized'}), 500
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Check if product exists
+        df = product_updater.metadata_df
+        if product_id not in df['id'].values:
+            return jsonify({'error': f'Product with ID {product_id} not found'}), 404
+        
+        # Get current product info
+        current_product = df[df['id'] == product_id].iloc[0].to_dict()
+        
+        # Prepare update data - only update provided fields
+        update_data = {}
+        updateable_fields = ['name', 'brand', 'ingredients', 'categories', 'manufacturer', 'manufacturerNumber']
+        
+        for field in updateable_fields:
+            if field in data:
+                update_data[field] = str(data[field])
+        
+        if not update_data:
+            return jsonify({'error': 'No updateable fields provided'}), 400
+        
+        # Update product
+        success = product_updater.update_product(product_id, update_data)
+        
+        if success:
+            # Reload all managers to reflect changes
+            reload_all_managers()
+            
+            # Get updated product info
+            updated_df = searcher.metadata_df  # Use reloaded searcher data
+            updated_product = updated_df[updated_df['id'] == product_id].iloc[0].to_dict()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Product {product_id} updated successfully',
+                'product': {
+                    'id': int(product_id),
+                    'name': safe_str(updated_product.get('name', '')),
+                    'brand': safe_str(updated_product.get('brand', '')),
+                    'ingredients': safe_str(updated_product.get('ingredients', '')),
+                    'categories': safe_str(updated_product.get('categories', '')),
+                    'manufacturer': safe_str(updated_product.get('manufacturer', '')),
+                    'manufacturerNumber': safe_str(updated_product.get('manufacturerNumber', ''))
+                },
+                'updated_fields': list(update_data.keys()),
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({'error': 'Failed to update product'}), 500
+        
+    except Exception as e:
+        print(f"Update product error: {e}")
+        traceback.print_exc()
+        return jsonify({'error': f'Update product failed: {str(e)}'}), 500
+
+
 @app.errorhandler(404)
 def not_found(error):
     """Handle 404 errors"""
@@ -370,7 +652,10 @@ if __name__ == '__main__':
     print("  GET  /api/health - Health check")
     print("  POST /api/search - Search products")
     print("  GET  /api/products - List products (with pagination)")
+    print("  POST /api/products - Add new product")
     print("  GET  /api/products/<id> - Get product by ID")
+    print("  PUT  /api/products/<id> - Update product by ID")
+    print("  DELETE /api/products/<id> - Delete product by ID")
     print("  GET  /api/stats - Get system statistics")
     
     # Find available port

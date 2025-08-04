@@ -19,7 +19,7 @@ from typing import Dict, Optional
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.simple_config import (
+from simple_config import (
     EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device
 )
 from src.preprocess import create_text_corpus_for_product
@@ -35,6 +35,7 @@ class ProductManager:
         self.tokenizer = None
         self.index = None
         self.metadata_df = None
+        self.embeddings = None  # Thêm embeddings array
         self._load_models_and_data()
     
     def _load_models_and_data(self):
@@ -46,13 +47,25 @@ class ProductManager:
             self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
             self.tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
             
+            self._load_data()
+            
+        except Exception as e:
+            print(f"❌ Error loading models: {e}")
+    
+    def _load_data(self):
+        """Load/reload index, embeddings và metadata"""
+        try:
             # Load FAISS index
             self.index = faiss.read_index(DATA_PATHS['faiss_index'])
+            
+            # Load embeddings array
+            self.embeddings = np.load(DATA_PATHS['embeddings'])
             
             # Load metadata
             self.metadata_df = pd.read_csv(DATA_PATHS['metadata'])
             
             print(f"✅ Loaded {len(self.metadata_df)} products")
+            print(f"✅ Loaded embeddings: {self.embeddings.shape}")
             print(f"✅ Index has {self.index.ntotal} vectors")
             
         except FileNotFoundError as e:
@@ -172,9 +185,13 @@ class ProductManager:
         }
         return self.add_product(product_data)
     
+    def add_product_from_data(self, product_data: Dict[str, str]) -> bool:
+        """Thêm sản phẩm mới từ dữ liệu API"""
+        return self.add_product(product_data)
+    
     def add_product(self, product_data: Optional[Dict[str, str]] = None) -> bool:
         """Thêm sản phẩm mới vào cơ sở dữ liệu"""
-        if self.model is None or self.index is None or self.metadata_df is None:
+        if self.model is None or self.index is None or self.metadata_df is None or self.embeddings is None:
             print("❌ Models hoặc data chưa được load")
             return False
         
@@ -210,6 +227,10 @@ class ProductManager:
                 'id': new_id,
                 'name': product_data['name'],
                 'brand': product_data['brand'],
+                'categories': product_data.get('categories', ''),
+                'ingredients': product_data.get('ingredients', ''),
+                'manufacturer': product_data.get('manufacturer', ''),
+                'manufacturerNumber': product_data.get('manufacturerNumber', ''),
                 'text_corpus': text_corpus
             }
             
@@ -219,11 +240,14 @@ class ProductManager:
                 pd.DataFrame([new_row])
             ], ignore_index=True)
             
-            # 5. Thêm vào FAISS index
+            # 5. Thêm vào embeddings array
+            self.embeddings = np.vstack([self.embeddings, embedding.reshape(1, -1)])
+            
+            # 6. Thêm vào FAISS index
             embedding_2d = embedding.reshape(1, -1)  # Reshape to (1, dimension)
             self.index.add_with_ids(embedding_2d, np.array([new_id], dtype=np.int64))
             
-            # 6. Lưu file
+            # 7. Lưu file
             self._save_data()
             
             print(f"✅ Đã thêm sản phẩm thành công!")
@@ -231,6 +255,7 @@ class ProductManager:
             print(f"   • Tên: {product_data['name']}")
             print(f"   • Thương hiệu: {product_data['brand']}")
             print(f"   • Total products: {len(self.metadata_df)}")
+            print(f"   • Total embeddings: {self.embeddings.shape[0]}")
             print(f"   • Total vectors: {self.index.ntotal}")
             
             return True
@@ -240,15 +265,18 @@ class ProductManager:
             return False
     
     def _save_data(self):
-        """Lưu metadata và FAISS index"""
+        """Lưu metadata, embeddings và FAISS index"""
         try:
             # Lưu metadata
             self.metadata_df.to_csv(DATA_PATHS['metadata'], index=False)
             
+            # Lưu embeddings array
+            np.save(DATA_PATHS['embeddings'], self.embeddings)
+            
             # Lưu FAISS index
             faiss.write_index(self.index, DATA_PATHS['faiss_index'])
             
-            print("💾 Đã lưu dữ liệu")
+            print("💾 Đã lưu tất cả dữ liệu")
             
         except Exception as e:
             print(f"❌ Lỗi khi lưu dữ liệu: {e}")

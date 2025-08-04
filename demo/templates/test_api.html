@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Quick API Test</h1>
+    
+    <h2>Health Check</h2>
+    <button onclick="testHealth()">Test Health</button>
+    <div id="health-result"></div>
+    
+    <h2>Add Product</h2>
+    <button onclick="testAddProduct()">Test Add Product</button>
+    <div id="add-result"></div>
+    
+    <h2>Get Products</h2>
+    <button onclick="testGetProducts()">Test Get Products</button>
+    <div id="get-result"></div>
+    
+    <script>
+        async function testHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                document.getElementById('health-result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('health-result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+        
+        async function testAddProduct() {
+            try {
+                const testProduct = {
+                    name: "Test Product " + Date.now(),
+                    brand: "Test Brand",
+                    ingredients: "Test ingredients",
+                    categories: "Test category",
+                    manufacturer: "Test Manufacturer",
+                    manufacturerNumber: "TEST123"
+                };
+                
+                const response = await fetch('/api/products', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testProduct)
+                });
+                
+                const data = await response.json();
+                document.getElementById('add-result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('add-result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+        
+        async function testGetProducts() {
+            try {
+                const response = await fetch('/api/products?limit=3');
+                const data = await response.json();
+                document.getElementById('get-result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('get-result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

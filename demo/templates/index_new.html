@@ -103,6 +103,10 @@
                             <i class="fas fa-list"></i>
                             Load Products
                         </button>
+                        <button id="add-product" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            Add Product
+                        </button>
                     </div>
                 </div>
                 
@@ -124,6 +128,56 @@
                 </div>
             </div>
         </section>
+
+        <!-- Add/Edit Product Modal -->
+        <div id="product-form-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="form-modal-title">Add New Product</h3>
+                    <button id="close-form-modal" class="close-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="product-form">
+                        <div class="form-group">
+                            <label for="product-name">Product Name *</label>
+                            <input type="text" id="product-name" name="name" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="product-brand">Brand *</label>
+                            <input type="text" id="product-brand" name="brand" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="product-ingredients">Ingredients</label>
+                            <textarea id="product-ingredients" name="ingredients" rows="3"></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="product-categories">Categories</label>
+                            <input type="text" id="product-categories" name="categories">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="product-manufacturer">Manufacturer</label>
+                            <input type="text" id="product-manufacturer" name="manufacturer">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="product-manufacturer-number">Manufacturer Number</label>
+                            <input type="text" id="product-manufacturer-number" name="manufacturerNumber">
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="button" id="cancel-form" class="btn btn-outline">Cancel</button>
+                            <button type="submit" id="submit-form" class="btn btn-primary">Save Product</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
 
         <!-- Product Detail Modal -->
         <div id="product-modal" class="modal hidden">

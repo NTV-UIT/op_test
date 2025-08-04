@@ -266,8 +266,10 @@ class ProductSearcher:
         """Khởi tạo ProductSearcher"""
         self.model, self.tokenizer = load_embedding_model()
         self.cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL_NAME)
-        
-        # Load index và metadata
+        self._load_data()
+    
+    def _load_data(self):
+        """Load/reload index và metadata"""
         try:
             self.index = faiss.read_index(DATA_PATHS['faiss_index'])
             self.metadata_df = pd.read_csv(DATA_PATHS['metadata'])

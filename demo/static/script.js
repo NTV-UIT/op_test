@@ -61,6 +61,13 @@ function setupEventListeners() {
         }
     });
     
+    // Auto-clear search results when input is empty
+    searchInput.addEventListener('input', function() {
+        if (this.value.trim() === '') {
+            clearSearchResults();
+        }
+    });
+    
     // Browse products
     loadProductsBtn.addEventListener('click', loadProducts);
     filterInput.addEventListener('input', debounce(filterProducts, 300));
@@ -77,10 +84,14 @@ function setupEventListeners() {
         }
     });
     
+    // CRUD functionality
+    setupCRUDEventListeners();
+    
     // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             hideModal();
+            closeProductFormModal();
         }
         if (e.ctrlKey && e.key === '/') {
             e.preventDefault();
@@ -153,7 +164,7 @@ async function performSearch() {
     const topK = parseInt(resultCount.value);
     
     // Show loading state
-    showLoading();
+    showLoading(true);
     hideSection(browseSection);
     searchStartTime = performance.now();
     
@@ -180,13 +191,14 @@ async function performSearch() {
         }
     } catch (error) {
         showToast(`Search failed: ${error.message}`, 'error');
-        hideLoading();
+        showLoading(false);
     }
 }
 
 function displaySearchResults(response) {
-    hideLoading();
+    showLoading(false);
     showSection(searchResults);
+    showSection(browseSection);  // Hiển thị lại Browse Products section
     
     resultsCount.textContent = `${response.total_results} results for "${response.query}"`;
     
@@ -212,7 +224,7 @@ function displaySearchResults(response) {
 // Product browsing
 async function loadProducts(page = 1, search = '') {
     try {
-        showLoading();
+        showLoading(true);
         
         const params = new URLSearchParams({
             page: page,
@@ -230,7 +242,7 @@ async function loadProducts(page = 1, search = '') {
             updatePagination(response.pagination);
             currentPage = page;
             
-            hideLoading();
+            showLoading(false);
             showSection(browseSection);
             hideSection(searchResults);
             
@@ -239,7 +251,7 @@ async function loadProducts(page = 1, search = '') {
             throw new Error(response.error || 'Failed to load products');
         }
     } catch (error) {
-        hideLoading();
+        showLoading(false);
         showToast(`Failed to load products: ${error.message}`, 'error');
     }
 }
@@ -268,7 +280,12 @@ function displayProducts(response) {
 function createProductCard(product, showScore = false) {
     const card = document.createElement('div');
     card.className = 'product-card';
-    card.onclick = () => showProductDetail(product);
+    card.onclick = (e) => {
+        // Don't show detail if clicking on action buttons
+        if (!e.target.closest('.product-actions')) {
+            showProductDetail(product);
+        }
+    };
     
     const scoreHtml = showScore ? `<div class="product-score">${(product.score * 100).toFixed(1)}%</div>` : '';
     
@@ -286,6 +303,14 @@ function createProductCard(product, showScore = false) {
                     <strong>Ingredients:</strong> ${truncateText(escapeHtml(product.ingredients), 100)}
                 </div>
             ` : ''}
+        </div>
+        <div class="product-actions">
+            <button class="btn-small btn-edit" onclick="openEditProductModal(${product.id}); event.stopPropagation();">
+                <i class="fas fa-edit"></i> Edit
+            </button>
+            <button class="btn-small btn-delete" onclick="deleteProduct(${product.id}, '${escapeHtml(product.name || '')}'); event.stopPropagation();">
+                <i class="fas fa-trash"></i> Delete
+            </button>
         </div>
     `;
     
@@ -372,8 +397,12 @@ function filterProducts() {
 }
 
 // Utility functions
-function showLoading() {
-    showSection(loading);
+function showLoading(show = true) {
+    if (show) {
+        showSection(loading);
+    } else {
+        hideSection(loading);
+    }
 }
 
 function hideLoading() {
@@ -388,8 +417,12 @@ function hideSection(element) {
     element.classList.add('hidden');
 }
 
-function hideModal() {
-    hideSection(productModal);
+function hideModal(modal = productModal) {
+    hideSection(modal);
+}
+
+function showModal(modal) {
+    showSection(modal);
 }
 
 function showToast(message, type = 'info') {
@@ -563,3 +596,233 @@ document.head.appendChild(styleSheet);
 
 // Keyboard shortcut hint
 console.log('💡 Tip: Press Ctrl+/ to focus on search input');
+
+// ====== CRUD FUNCTIONALITY ======
+
+// DOM Elements for CRUD
+const addProductBtn = document.getElementById('add-product');
+const productFormModal = document.getElementById('product-form-modal');
+const closeFormModal = document.getElementById('close-form-modal');
+const cancelForm = document.getElementById('cancel-form');
+const productForm = document.getElementById('product-form');
+const formModalTitle = document.getElementById('form-modal-title');
+const submitForm = document.getElementById('submit-form');
+
+// CRUD state
+let isEditMode = false;
+let editingProductId = null;
+
+// Setup CRUD event listeners
+function setupCRUDEventListeners() {
+    if (addProductBtn) {
+        addProductBtn.addEventListener('click', openAddProductModal);
+    }
+    
+    if (closeFormModal) {
+        closeFormModal.addEventListener('click', closeProductFormModal);
+    }
+    
+    if (cancelForm) {
+        cancelForm.addEventListener('click', closeProductFormModal);
+    }
+    
+    if (productForm) {
+        productForm.addEventListener('submit', handleProductSubmit);
+    }
+    
+    // Close modal when clicking outside
+    if (productFormModal) {
+        productFormModal.addEventListener('click', function(e) {
+            if (e.target === productFormModal) {
+                closeProductFormModal();
+            }
+        });
+    }
+}
+
+// Open add product modal
+function openAddProductModal() {
+    isEditMode = false;
+    editingProductId = null;
+    formModalTitle.textContent = 'Add New Product';
+    submitForm.textContent = 'Add Product';
+    productForm.reset();
+    showModal(productFormModal);
+}
+
+// Open edit product modal
+function openEditProductModal(productId) {
+    isEditMode = true;
+    editingProductId = productId;
+    formModalTitle.textContent = 'Edit Product';
+    submitForm.textContent = 'Update Product';
+    
+    // Load product data
+    loadProductForEdit(productId);
+    showModal(productFormModal);
+}
+
+// Load product data for editing
+async function loadProductForEdit(productId) {
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.products}/${productId}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (data.success && data.product) {
+            populateForm(data.product);
+        } else {
+            throw new Error('Failed to load product data');
+        }
+    } catch (error) {
+        console.error('Error loading product:', error);
+        showToast('Failed to load product data', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Populate form with product data
+function populateForm(product) {
+    document.getElementById('product-name').value = product.name || '';
+    document.getElementById('product-brand').value = product.brand || '';
+    document.getElementById('product-ingredients').value = product.ingredients || '';
+    document.getElementById('product-categories').value = product.categories || '';
+    document.getElementById('product-manufacturer').value = product.manufacturer || '';
+    document.getElementById('product-manufacturer-number').value = product.manufacturerNumber || '';
+}
+
+// Close product form modal
+function closeProductFormModal() {
+    hideModal(productFormModal);
+    productForm.reset();
+    isEditMode = false;
+    editingProductId = null;
+}
+
+// Handle product form submission
+async function handleProductSubmit(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(productForm);
+    const productData = {
+        name: formData.get('name').trim(),
+        brand: formData.get('brand').trim(),
+        ingredients: formData.get('ingredients').trim(),
+        categories: formData.get('categories').trim(),
+        manufacturer: formData.get('manufacturer').trim(),
+        manufacturerNumber: formData.get('manufacturerNumber').trim()
+    };
+    
+    // Validate required fields
+    if (!productData.name || !productData.brand) {
+        showToast('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        
+        let response;
+        if (isEditMode && editingProductId !== null) {
+            // Update product
+            response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.products}/${editingProductId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(productData)
+            });
+        } else {
+            // Add new product
+            response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.products}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(productData)
+            });
+        }
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (data.success) {
+            const action = isEditMode ? 'updated' : 'added';
+            showToast(`Product ${action} successfully!`, 'success');
+            closeProductFormModal();
+            
+            // Refresh product list
+            await loadProducts(currentPage);
+            await loadStatistics();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+        
+    } catch (error) {
+        console.error('Error saving product:', error);
+        showToast(`Failed to save product: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Delete product
+async function deleteProduct(productId, productName) {
+    if (!confirm(`Are you sure you want to delete "${productName}"?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        
+        const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.products}/${productId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (data.success) {
+            showToast('Product deleted successfully!', 'success');
+            
+            // Refresh product list
+            await loadProducts(currentPage);
+            await loadStatistics();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+        
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        showToast(`Failed to delete product: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Clear search results
+function clearSearchResults() {
+    const resultsDiv = document.getElementById('searchResults');
+    if (resultsDiv) {
+        resultsDiv.innerHTML = '';
+    }
+    
+    const searchTime = document.getElementById('searchTime');
+    if (searchTime) {
+        searchTime.textContent = '';
+    }
+    
+    currentSearchResults = [];
+    console.log('Search results cleared');
+}
