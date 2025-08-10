@@ -19,7 +19,11 @@ API_SETTINGS = {
 
 # Model names
 EMBEDDING_MODEL_NAME = 'BAAI/bge-large-en-v1.5'
-CROSS_ENCODER_MODEL_NAME = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+# EMBEDDING_MODEL_NAME = 'BAAI/bge-base-en-v1.5'
+
+# CROSS_ENCODER_MODEL_NAME = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+CROSS_ENCODER_MODEL_NAME = 'BAAI/bge-reranker-base'
+
 
 # File paths (absolute paths)
 import os
