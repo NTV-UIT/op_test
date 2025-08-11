@@ -21,8 +21,8 @@ API_SETTINGS = {
 EMBEDDING_MODEL_NAME = 'BAAI/bge-large-en-v1.5'
 # EMBEDDING_MODEL_NAME = 'BAAI/bge-base-en-v1.5'
 
-# CROSS_ENCODER_MODEL_NAME = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
-CROSS_ENCODER_MODEL_NAME = 'BAAI/bge-reranker-base'
+CROSS_ENCODER_MODEL_NAME = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+# CROSS_ENCODER_MODEL_NAME = 'BAAI/bge-reranker-base'
 
 
 # File paths (absolute paths)
@@ -76,6 +76,100 @@ DB_MANAGEMENT = {
     'backup_before_update': True,
     'auto_save': True
 }
+
+# ============================================================================
+# GLOBAL MODEL INSTANCES
+# ============================================================================
+
+# Global model instances - chỉ load 1 lần duy nhất
+_global_embedding_model = None
+_global_tokenizer = None
+_global_cross_encoder = None
+
+def get_global_embedding_model():
+    """Get global embedding model instance - chỉ load 1 lần duy nhất"""
+    global _global_embedding_model, _global_tokenizer
+    
+    if _global_embedding_model is None:
+        print(f"🔄 Loading embedding model for the first time: {EMBEDDING_MODEL_NAME}")
+        
+        try:
+            from sentence_transformers import SentenceTransformer
+            from transformers import AutoTokenizer
+            
+            # Monitor GPU memory before loading (if available)
+            monitor_gpu_memory("Before loading embedding model")
+            
+            _global_embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+            _global_tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
+            
+            # Move to appropriate device
+            device = get_device()
+            _global_embedding_model = _global_embedding_model.to(device)
+            
+            print(f"✅ Embedding model loaded once on {device}")
+            monitor_gpu_memory("After loading embedding model")
+            
+        except Exception as e:
+            print(f"❌ Error loading embedding model: {e}")
+            raise
+    else:
+        print("♻️ Reusing existing embedding model instance")
+    
+    return _global_embedding_model, _global_tokenizer
+
+def get_global_cross_encoder():
+    """Get global cross encoder instance - chỉ load 1 lần duy nhất"""
+    global _global_cross_encoder
+    
+    if _global_cross_encoder is None:
+        print(f"🔄 Loading cross encoder for the first time: {CROSS_ENCODER_MODEL_NAME}")
+        
+        try:
+            from sentence_transformers import CrossEncoder
+            
+            # Monitor GPU memory before loading (if available)
+            monitor_gpu_memory("Before loading cross encoder")
+            
+            _global_cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL_NAME)
+            
+            device = get_device()
+            if hasattr(_global_cross_encoder, 'to'):
+                _global_cross_encoder = _global_cross_encoder.to(device)
+            
+            print(f"✅ Cross encoder loaded once on {device}")
+            monitor_gpu_memory("After loading cross encoder")
+            
+        except Exception as e:
+            print(f"❌ Error loading cross encoder: {e}")
+            raise
+    else:
+        print("♻️ Reusing existing cross encoder instance")
+    
+    return _global_cross_encoder
+
+def monitor_gpu_memory(context=""):
+    """Monitor GPU memory usage"""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            memory_allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+            memory_reserved = torch.cuda.memory_reserved() / 1024**3    # GB
+            print(f"🖥️ GPU Memory {context}: {memory_allocated:.2f}GB allocated, {memory_reserved:.2f}GB reserved")
+            return memory_allocated, memory_reserved
+    except:
+        pass
+    return 0, 0
+
+def clear_gpu_cache():
+    """Clear GPU cache to free memory"""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            print("🧹 GPU cache cleared")
+    except:
+        pass
 
 # ============================================================================
 # HELPER FUNCTIONS

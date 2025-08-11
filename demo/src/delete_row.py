@@ -19,7 +19,8 @@ from typing import List, Optional, Union
 # Add config path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'config'))
 from simple_config import (
-    EMBEDDING_MODEL_NAME, DATA_PATHS, MAX_LENGTH, BATCH_SIZE, get_device
+    EMBEDDING_MODEL_NAME, DATA_PATHS, MAX_LENGTH, BATCH_SIZE, get_device,
+    get_global_embedding_model, monitor_gpu_memory
 )
 
 class ProductDeleter:
@@ -54,9 +55,9 @@ class ProductDeleter:
         try:
             print("🔄 Loading models and data...")
             
-            # Load embedding model (cần cho rebuild index)
-            self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-            self.tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
+            # ✅ Sử dụng global model
+            self.model, self.tokenizer = get_global_embedding_model()
+            print("✅ Using global embedding model")
             
             # Load FAISS index
             self.index = faiss.read_index(DATA_PATHS['faiss_index'])

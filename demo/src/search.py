@@ -19,146 +19,75 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'config'))
 from simple_config import (
     EMBEDDING_MODEL_NAME, CROSS_ENCODER_MODEL_NAME, DATA_PATHS, 
     DEFAULT_TOP_K, RETRIEVAL_K, MAX_TOP_K, DEFAULT_SEARCH_METHOD,
-    EXIT_COMMANDS, BATCH_SIZE, get_device
+    EXIT_COMMANDS, BATCH_SIZE, get_device, get_global_embedding_model, 
+    get_global_cross_encoder, monitor_gpu_memory
 )
 
 # Global variables
 DEVICE = get_device()
 
-# Load models and data
-print("🔄 Loading models and data...")
-model, tokenizer = load_embedding_model()
-cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL_NAME)
+# Functions for backward compatibility
 
-# Load index and metadata
-try:
-    index = faiss.read_index(DATA_PATHS['faiss_index'])
-    metadata_df = pd.read_csv(DATA_PATHS['metadata'])
-    print(f"✅ Loaded index with {index.ntotal} vectors")
-    print(f"✅ Loaded metadata for {len(metadata_df)} products")
-except FileNotFoundError:
-    print("❌ Index or metadata file not found. Please run embedding.py first.")
-    index = None
-    metadata_df = None
+# Backward compatibility functions - delegate to global searcher instance
+_global_searcher = None
 
-# Current database variables (for dynamic updates)
-current_index = index
-current_metadata_df = metadata_df
+def get_global_searcher():
+    """Get global searcher instance"""
+    global _global_searcher
+    if _global_searcher is None:
+        _global_searcher = ProductSearcher()
+    return _global_searcher
 
 def bi_encoder_search(query, top_k=None, use_current_db=False):
-    """Basic bi-encoder search"""
+    """Backward compatibility function"""
+    searcher = get_global_searcher()
     if top_k is None:
         top_k = DEFAULT_TOP_K
-        
-    if index is None or metadata_df is None:
-        return []
-        
-    time_start = time.time()
     
-    query_embedding = model.encode(
-        [query],
-        normalize_embeddings=True,
-        device=DEVICE
-    )
+    # Class ProductSearcher hiện tại chỉ có 2 tham số cho bi_encoder_search
+    results, scores = searcher.bi_encoder_search(query, top_k)
     
-    # Use current database if specified
-    search_index = current_index if use_current_db else index
-    search_metadata = current_metadata_df if use_current_db else metadata_df
+    # Chuyển đổi format để tương thích với evaluation
+    formatted_results = []
+    response_time = results[0]['time'] if results else 0  # Lấy thời gian từ kết quả đầu tiên
     
-    distances, indices = search_index.search(query_embedding, top_k)
-    time_end = time.time()
-    response_time = (time_end - time_start) * 1000
+    for i, (result, score) in enumerate(zip(results, scores)):
+        formatted_result = result.copy()
+        formatted_result['score'] = score
+        formatted_result['rank'] = i + 1
+        formatted_result['time'] = response_time  # Sử dụng thời gian thực
+        formatted_results.append(formatted_result)
     
-    results = []
-    for idx, score in zip(indices[0], distances[0]):
-        # Handle IndexIDMap (indices are actual IDs) vs regular index
-        if use_current_db:
-            # Using IndexIDMap - indices are product IDs
-            product_row = search_metadata[search_metadata['id'] == idx]
-            if not product_row.empty:
-                row = product_row.iloc[0]
-                results.append({
-                    'id': row['id'],
-                    'name': row['name'],
-                    'brand': row['brand'],
-                    'score': float(score),
-                    'text': row['text_corpus'],
-                    'time': response_time,
-                    'method': 'bi_encoder'
-                })
-        else:
-            # Regular index - indices are array positions
-            if idx < len(search_metadata):
-                row = search_metadata.iloc[idx]
-                results.append({
-                    'id': row['id'],
-                    'name': row['name'],
-                    'brand': row['brand'],
-                    'score': float(score),
-                    'text': row['text_corpus'],
-                    'time': response_time,
-                    'method': 'bi_encoder'
-                })
-    
-    return results
+    return formatted_results
 
 def hybrid_search(query, top_k=None, retrieval_k=None, use_current_db=False):
-    """Hybrid search với Bi-Encoder + Cross-Encoder"""
+    """Backward compatibility function"""
+    searcher = get_global_searcher()
     if top_k is None:
         top_k = DEFAULT_TOP_K
     if retrieval_k is None:
         retrieval_k = RETRIEVAL_K
-        
-    time_start = time.time()
     
-    # Step 1: Bi-Encoder retrieval
-    bi_results = bi_encoder_search(query, top_k=retrieval_k, use_current_db=use_current_db)
-    retrieval_time = time.time()
+    # Class ProductSearcher hiện tại chỉ có 2 tham số cho hybrid_search
+    results, scores = searcher.hybrid_search(query, top_k, retrieval_k)
     
-    # Step 2: Prepare for Cross-Encoder
-    query_doc_pairs = []
-    candidate_docs = []
+    # Chuyển đổi format để tương thích với evaluation
+    formatted_results = []
+    response_time = results[0]['time'] if results else 0  # Lấy thời gian từ kết quả đầu tiên
     
-    for result in bi_results:
-        query_doc_pairs.append([query, result['text']])
-        candidate_docs.append(result)
+    for i, (result, score) in enumerate(zip(results, scores)):
+        formatted_result = result.copy()
+        formatted_result['score'] = score
+        formatted_result['rank'] = i + 1
+        formatted_result['time'] = response_time  # Sử dụng thời gian thực
+        formatted_results.append(formatted_result)
     
-    # Step 3: Cross-Encoder re-ranking
-    if len(query_doc_pairs) > 0:
-        cross_scores = cross_encoder.predict(query_doc_pairs)
-        
-        for i, doc in enumerate(candidate_docs):
-            doc['cross_encoder_score'] = float(cross_scores[i])
-            doc['bi_encoder_score'] = doc['score']
-        
-        candidate_docs.sort(key=lambda x: x['cross_encoder_score'], reverse=True)
-    
-    reranking_time = time.time()
-    total_time = (reranking_time - time_start) * 1000
-    
-    # Return top-k results
-    final_results = candidate_docs[:top_k]
-    for result in final_results:
-        result['time'] = total_time
-        result['method'] = 'hybrid'
-        result['retrieval_time_ms'] = (retrieval_time - time_start) * 1000
-        result['reranking_time_ms'] = (reranking_time - retrieval_time) * 1000
-    
-    return final_results
+    return formatted_results
 
-
-# Enhanced search function for current database
 def search_current_database(query, method=None, top_k=None):
-    """Search trong database hiện tại với các thay đổi"""
-    if method is None:
-        method = DEFAULT_SEARCH_METHOD
-    if top_k is None:
-        top_k = DEFAULT_TOP_K
-        
-    if method == 'hybrid':
-        return hybrid_search(query, top_k=top_k, use_current_db=True)
-    else:
-        return bi_encoder_search(query, top_k=top_k, use_current_db=True)
+    """Backward compatibility function"""
+    searcher = get_global_searcher()
+    return searcher.search_current_database(query, method, top_k)
 
 def display_search_results(results, query):
     """Display search results in a formatted way"""
@@ -179,7 +108,8 @@ def display_search_results(results, query):
 
 def interactive_search():
     """Interactive search interface"""
-    if index is None or metadata_df is None:
+    searcher = get_global_searcher()
+    if searcher.index is None or searcher.metadata_df is None:
         print("❌ Cannot run search - models or data not loaded")
         print("Please run embedding.py first to create the index and metadata")
         return
@@ -284,6 +214,8 @@ class ProductSearcher:
         if self.index is None or self.metadata_df is None:
             return [], []
         
+        start_time = time.time()
+        
         # Tạo embedding cho query
         query_embedding = self.model.encode(
             query, 
@@ -295,9 +227,8 @@ class ProductSearcher:
         ).cpu().numpy().reshape(1, -1)
         
         # Search trong FAISS index
-        start_time = time.time()
         scores, indices = self.index.search(query_embedding, top_k)
-        response_time = (time.time() - start_time) * 1000
+        response_time = (time.time() - start_time) * 1000  # Convert to ms
         
         results = []
         result_scores = []
@@ -310,7 +241,7 @@ class ProductSearcher:
                     row = self.metadata_df[self.metadata_df['id'] == idx]
                     if not row.empty:
                         row = row.iloc[0]
-                        results.append({
+                        result = {
                             'id': row['id'],
                             'name': row['name'],
                             'brand': row['brand'],
@@ -318,14 +249,16 @@ class ProductSearcher:
                             'categories': row.get('categories', ''),
                             'manufacturer': row.get('manufacturer', ''),
                             'manufacturerNumber': row.get('manufacturerNumber', ''),
-                            'text_corpus': row['text_corpus']
-                        })
+                            'text_corpus': row['text_corpus'],
+                            'time': response_time  # Thêm thời gian
+                        }
+                        results.append(result)
                         result_scores.append(float(score))
                 else:
                     # Regular index - idx là array position
                     if idx < len(self.metadata_df):
                         row = self.metadata_df.iloc[idx]
-                        results.append({
+                        result = {
                             'id': row['id'],
                             'name': row['name'],
                             'brand': row['brand'],
@@ -333,8 +266,10 @@ class ProductSearcher:
                             'categories': row.get('categories', ''),
                             'manufacturer': row.get('manufacturer', ''),
                             'manufacturerNumber': row.get('manufacturerNumber', ''),
-                            'text_corpus': row['text_corpus']
-                        })
+                            'text_corpus': row['text_corpus'],
+                            'time': response_time  # Thêm thời gian
+                        }
+                        results.append(result)
                         result_scores.append(float(score))
         
         return results, result_scores
@@ -343,6 +278,8 @@ class ProductSearcher:
         """Hybrid search với bi-encoder + cross-encoder"""
         if self.index is None or self.metadata_df is None:
             return [], []
+        
+        start_time = time.time()
         
         # Stage 1: Bi-encoder retrieval với số lượng lớn hơn
         bi_results, bi_scores = self.bi_encoder_search(query, retrieval_k)
@@ -358,11 +295,16 @@ class ProductSearcher:
         combined_results = list(zip(bi_results, cross_scores))
         combined_results.sort(key=lambda x: x[1], reverse=True)
         
+        # Tính tổng thời gian
+        total_time = (time.time() - start_time) * 1000  # Convert to ms
+        
         # Lấy top-k kết quả
         final_results = []
         final_scores = []
         
         for result, score in combined_results[:top_k]:
+            # Cập nhật thời gian cho từng kết quả
+            result['time'] = total_time
             final_results.append(result)
             final_scores.append(float(score))
         
@@ -375,7 +317,8 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1 and sys.argv[1] == '--test':
         # Test mode with predefined queries
-        if index is not None and metadata_df is not None:
+        searcher = get_global_searcher()
+        if searcher.index is not None and searcher.metadata_df is not None:
             test_queries = [
                 "organic chocolate",
                 "protein powder", 

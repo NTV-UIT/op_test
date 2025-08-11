@@ -17,16 +17,15 @@ from preprocess import create_text_corpus
 # Add config path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'config'))
 from simple_config import (
-    EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device
+    EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device,
+    get_global_embedding_model, monitor_gpu_memory
 )
 
 
 def load_embedding_model():
-    """Load embedding model và tokenizer"""
-    print(f"🤖 Loading embedding model: {EMBEDDING_MODEL_NAME}")
-    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
-    return model, tokenizer
+    """Load embedding model và tokenizer - sử dụng global instance"""
+    print(f"🤖 Using global embedding model: {EMBEDDING_MODEL_NAME}")
+    return get_global_embedding_model()
 
 
 def split_text_into_chunks(text, tokenizer, max_length):

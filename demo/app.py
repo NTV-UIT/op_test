@@ -26,7 +26,7 @@ from src.search import ProductSearcher
 from src.add_row import ProductManager
 from src.delete_row import ProductDeleter
 from src.update_row import ProductUpdater
-from simple_config import API_SETTINGS
+from simple_config import API_SETTINGS, get_global_embedding_model, monitor_gpu_memory
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -58,6 +58,12 @@ def initialize_search_service():
     try:
         print("🚀 Initializing search service...")
         
+        # ✅ Khởi tạo global models trước - chỉ load 1 lần duy nhất
+        print("🔄 Pre-loading global models...")
+        model, tokenizer = get_global_embedding_model()
+        print("✅ Global models loaded")
+        monitor_gpu_memory("After loading global models")
+        
         # Initialize searcher
         searcher = ProductSearcher()
         print("✅ ProductSearcher initialized")
@@ -73,6 +79,7 @@ def initialize_search_service():
         print("✅ ProductUpdater initialized")
         
         print("🎉 Search service and database managers initialized successfully!")
+        monitor_gpu_memory("After all initialization")
         return True
         
     except Exception as e:

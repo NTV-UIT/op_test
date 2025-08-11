@@ -20,7 +20,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config'))
 
 from simple_config import (
-    EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device
+    EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device,
+    get_global_embedding_model, monitor_gpu_memory
 )
 from src.embedding import embed_text_with_attention, load_embedding_model
 from src.preprocess import create_text_corpus_for_product
@@ -42,10 +43,9 @@ class ProductUpdater:
     def load_existing_data(self):
         """Load dữ liệu hiện có"""
         try:
-            # Load model
-            self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-            self.tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
-            print("✅ Loaded embedding model")
+            # ✅ Sử dụng global model
+            self.model, self.tokenizer = get_global_embedding_model()
+            print("✅ Using global embedding model")
             
             self._load_data()
                 

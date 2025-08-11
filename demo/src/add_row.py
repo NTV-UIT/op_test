@@ -20,7 +20,8 @@ from typing import Dict, Optional
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from simple_config import (
-    EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device
+    EMBEDDING_MODEL_NAME, DATA_PATHS, BATCH_SIZE, MAX_LENGTH, get_device,
+    get_global_embedding_model, monitor_gpu_memory
 )
 from src.preprocess import create_text_corpus_for_product
 from src.embedding import embed_text_with_attention, load_embedding_model
@@ -43,9 +44,8 @@ class ProductManager:
         try:
             print("🔄 Loading models and data...")
             
-            # Load embedding model
-            self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-            self.tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
+            # ✅ Sử dụng global model thay vì load mới
+            self.model, self.tokenizer = get_global_embedding_model()
             
             self._load_data()
             
